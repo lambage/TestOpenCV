@@ -10,17 +10,19 @@ using namespace ci::app;
 
 class ocvCaptureApp : public App {
 public:
-	void setup();
-	void keyDown(KeyEvent event);
-	void update();
-	void Sharpen(cv::Mat &input, cv::Mat &output);
-	void FFT(cv::Mat &input, cv::Mat &output);
-	void draw();
-	void resize();
+	void setup() override;
+	void keyDown(KeyEvent event) override;
+	void update() override;
+	void draw() override;
+	void resize() override;
 
 	CaptureRef			mCapture;
 	gl::TextureRef		mTexture;
 	int modes = 4;
+
+private:
+	void Sharpen(cv::Mat &input, cv::Mat &output);
+	void FFT(cv::Mat &input, cv::Mat &output);
 };
 
 constexpr int GetMaxModes() { return 5; }
@@ -80,13 +82,6 @@ void ocvCaptureApp::update()
 	}
 }
 
-void ocvCaptureApp::Sharpen(cv::Mat &input, cv::Mat &output)
-{
-	auto kern = cv::Mat{ (cv::Mat_<char>(3,3) << 0, -1,  0,
-			                                    -1,  5, -1,
-			                                     0, -1,  0) };
-	cv::filter2D(input, output, CV_8U, kern);
-}
 
 void ocvCaptureApp::draw()
 {
@@ -105,5 +100,16 @@ void ocvCaptureApp::resize()
 {
 }
 
+void ocvCaptureApp::Sharpen(cv::Mat &input, cv::Mat &output)
+{
+	auto kern = cv::Mat{ (cv::Mat_<char>(3,3) << 0, -1,  0,
+			                                    -1,  5, -1,
+			                                     0, -1,  0) };
+	cv::filter2D(input, output, CV_8U, kern);
+}
+
+void ocvCaptureApp::FFT(cv::Mat & input, cv::Mat & output)
+{
+}
 
 CINDER_APP(ocvCaptureApp, RendererGl)
