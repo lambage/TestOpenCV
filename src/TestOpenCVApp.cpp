@@ -1,9 +1,16 @@
+#include "stdafx.h"
 #include "cinder/app/App.h"
 #include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
 #include "cinder/Capture.h"
 
 #include "CinderOpenCV.h"
+
+#include "IRenderMode.h"
+#include "PassThrough.h"
+#include "Sharpen.h"
+#include "Sobel.h"
+#include "Threshold.h"
 
 using namespace ci;
 using namespace ci::app;
@@ -16,20 +23,24 @@ public:
 	void draw() override;
 	void resize() override;
 
+private:
 	CaptureRef			mCapture;
 	gl::TextureRef		mTexture;
-	int modes = 4;
-
-private:
-	void Sharpen(cv::Mat &input, cv::Mat &output);
-	void FFT(cv::Mat &input, cv::Mat &output);
+	std::vector<std::unique_ptr<IRenderMode>> m_modes;
+	std::mutex render_mode_mutex;
+	decltype(m_modes)::iterator current_render_mode;
 };
-
-constexpr int GetMaxModes() { return 5; }
 
 void ocvCaptureApp::setup()
 {
 	try {
+		m_modes.emplace_back(new PassThrough());
+		m_modes.emplace_back(new Sharpen());
+		m_modes.emplace_back(new Sobel());
+		m_modes.emplace_back(new Threshold());
+
+		current_render_mode = m_modes.begin();
+
 		mCapture = Capture::create(640, 480);
 		mCapture->start();
 	}
@@ -42,10 +53,11 @@ void ocvCaptureApp::keyDown(KeyEvent event)
 {
 	if (event.getChar() == KeyEvent::KEY_SPACE)
 	{
-		modes++;
-		if (modes >= GetMaxModes())
+		std::unique_lock<std::mutex> lock(render_mode_mutex);
+		current_render_mode++;
+		if (current_render_mode == m_modes.end())
 		{
-			modes = 0;
+			current_render_mode = m_modes.begin();
 		}
 	}
 	else if (event.getChar() == KeyEvent::KEY_ESCAPE)
@@ -56,26 +68,19 @@ void ocvCaptureApp::keyDown(KeyEvent event)
 
 void ocvCaptureApp::update()
 {
-	if (mCapture && mCapture->checkNewFrame()) {
-		cv::Mat input(toOcv(*mCapture->getSurface())), output;
+	if (mCapture && mCapture->checkNewFrame())
+	{
+		auto input(toOcv(*mCapture->getSurface()));
+		auto output = cv::Mat{};
 
-		switch (modes)
+		if (current_render_mode != m_modes.end())
 		{
-		case 0:
-			cv::Sobel(input, output, CV_8U, 1, 0);
-			break;
-		case 1:
-			cv::threshold(input, output, 128, 255, CV_8U);
-			break;
-		case 2:
-			cv::Laplacian(input, output, CV_8U);
-			break;
-		case 3:
+			std::unique_lock<std::mutex> lock(render_mode_mutex);
+			(*current_render_mode)->Compute(input, output);
+		}
+		else
+		{
 			output = input;
-			break;
-		case 4:
-			Sharpen(input, output);
-			break;
 		}
 
 		mTexture = gl::Texture::create(fromOcv(output), gl::Texture::Format().loadTopDown());
@@ -97,18 +102,6 @@ void ocvCaptureApp::draw()
 }
 
 void ocvCaptureApp::resize()
-{
-}
-
-void ocvCaptureApp::Sharpen(cv::Mat &input, cv::Mat &output)
-{
-	auto kern = cv::Mat{ (cv::Mat_<char>(3,3) << 0, -1,  0,
-			                                    -1,  5, -1,
-			                                     0, -1,  0) };
-	cv::filter2D(input, output, CV_8U, kern);
-}
-
-void ocvCaptureApp::FFT(cv::Mat & input, cv::Mat & output)
 {
 }
 
